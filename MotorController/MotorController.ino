@@ -1,9 +1,11 @@
 ﻿#include <WiFi.h>
 #include <WebServer.h>
+#include <esp_arduino_version.h>
 #include "Presets.h"
 
 // Classic ESP32 DevKit / WROOM pins. Confirm your board before wiring.
 constexpr int ENA = 25, IN1 = 26, IN2 = 27;
+constexpr uint8_t PWM_CHANNEL = 0; // Arduino-ESP32 2.x uses channels.
 constexpr uint32_t TIMEOUT_MS = 2000;
 const char *AP_NAME = "MotorController";
 const char *AP_PASSWORD = "motorcontrol"; // Change this; minimum 8 characters.
@@ -90,7 +92,13 @@ void setPWM(int value) {
   // One direction, matching the old Python interface. Swap motor leads if needed.
   digitalWrite(IN1, duty ? HIGH : LOW);
   digitalWrite(IN2, LOW);
-  if (pwmReady) ledcWrite(ENA, duty);
+  if (pwmReady) {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcWrite(ENA, duty);
+#else
+    ledcWrite(PWM_CHANNEL, duty);
+#endif
+  }
 }
 void stopMotor() {
   active = nullptr;
@@ -148,7 +156,12 @@ void setup() {
   pinMode(ENA, OUTPUT); digitalWrite(ENA, LOW);
   pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT);
   digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
-  pwmReady = ledcAttach(ENA, 1000, 8); // Arduino-ESP32 3.x.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  pwmReady = ledcAttach(ENA, 1000, 8);
+#else
+  pwmReady = ledcSetup(PWM_CHANNEL, 1000, 8) > 0;
+  if (pwmReady) ledcAttachPin(ENA, PWM_CHANNEL);
+#endif
   stopMotor();
   if (!pwmReady) { Serial.println("PWM initialization failed"); return; }
   WiFi.mode(WIFI_AP);
